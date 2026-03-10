@@ -5,6 +5,7 @@ import Hero from "./components/Hero";
 import Story from "./components/Story";
 import Roadmap from "./components/Roadmap";
 import RSVPForm from "./components/RSVPForm";
+import Gifts from "./components/Gifts";
 import EnvelopeIntro from "./components/EnvelopeIntro";
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
     { name: "Nuestra Historia", href: "#story" },
     { name: "Información", href: "#info" },
     { name: "Asistencia", href: "#rsvp" },
+    { name: "Regalos", href: "#gifts" },
   ];
 
   return (
@@ -97,6 +99,7 @@ export default function App() {
         <Story />
         <Roadmap />
         <RSVPForm />
+        <Gifts />
       </main>
 
       {/* Footer */}

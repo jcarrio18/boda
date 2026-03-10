@@ -79,7 +79,7 @@ export default function RSVPForm() {
       <div className="max-w-3xl mx-auto px-6">
         <div className="text-center mb-16">
           <h2 className="text-4xl md:text-5xl font-serif mb-4">Confirmar Asistencia</h2>
-          <p className="text-med-olive italic">Por favor, responde lo antes posible :)</p>
+          <p className="text-med-olive italic">Puede rellenar una persona y añadir participantes adicionales al indicar su asistencia.<br />Por favor, responde lo antes posible :)</p>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-10">

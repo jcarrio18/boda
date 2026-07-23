@@ -201,6 +201,7 @@ export default async function handler(
       )
     `;
     await sql`CREATE INDEX IF NOT EXISTS idx_photos_created_at ON photos(created_at DESC)`;
+    await sql`ALTER TABLE photos ADD COLUMN IF NOT EXISTS thumb_key TEXT`;
 
     return res.status(200).json({ 
       success: true, 

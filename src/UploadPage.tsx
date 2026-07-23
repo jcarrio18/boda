@@ -18,6 +18,7 @@ interface Photo {
     uploader: string | null;
     created_at: string;
     url: string | null;
+    thumbUrl?: string | null;
 }
 
 interface UploadItem {
@@ -101,30 +102,81 @@ export default function UploadPage() {
         setHeroIdx(Math.max(0, Math.min(displayed.length - 1, i)));
 
     // --- Uploads ---
-    const uploadOne = async (file: File): Promise<boolean> => {
-        if (file.size > 20 * 1024 * 1024) throw new Error('La foto supera los 20 MB');
-        const ext = file.name.includes('.') ? file.name.split('.').pop() : '';
+    // Generate a small JPEG preview in the browser so the grid loads tiny files
+    // (~40KB) instead of the multi-MB originals. Returns null if it can't decode
+    // the image (e.g. some HEIC on unsupported browsers) — we then skip the thumb.
+    const makeThumbnail = async (file: File): Promise<Blob | null> => {
+        try {
+            const bitmap = await createImageBitmap(file);
+            const MAX = 500;
+            const scale = Math.min(1, MAX / Math.max(bitmap.width, bitmap.height));
+            const w = Math.max(1, Math.round(bitmap.width * scale));
+            const h = Math.max(1, Math.round(bitmap.height * scale));
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return null;
+            ctx.drawImage(bitmap, 0, 0, w, h);
+            bitmap.close();
+            return await new Promise((resolve) =>
+                canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.72),
+            );
+        } catch {
+            return null;
+        }
+    };
+
+    const uploadBlob = async (
+        blob: Blob,
+        contentType: string,
+        ext: string,
+        kind?: 'thumb',
+    ): Promise<string | null> => {
         const presignRes = await fetch('/api/photos?action=upload', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contentType: file.type, ext }),
+            body: JSON.stringify({ contentType, ext, kind }),
         });
         if (!presignRes.ok) {
+            if (kind === 'thumb') return null; // thumb is best-effort
             const d = await presignRes.json().catch(() => null);
             throw new Error((d && d.error) || 'No se pudo preparar la subida');
         }
         const { url, key } = await presignRes.json();
         const up = await fetch(url, {
             method: 'PUT',
-            headers: { 'Content-Type': file.type },
-            body: file,
+            headers: { 'Content-Type': contentType },
+            body: blob,
         });
-        if (!up.ok) throw new Error('Error al subir la foto');
+        if (!up.ok) {
+            if (kind === 'thumb') return null;
+            throw new Error('Error al subir la foto');
+        }
+        return key as string;
+    };
+
+    const uploadOne = async (file: File): Promise<boolean> => {
+        if (file.size > 20 * 1024 * 1024) throw new Error('La foto supera los 20 MB');
+        const ext = file.name.includes('.') ? file.name.split('.').pop() || '' : '';
+        const key = await uploadBlob(file, file.type, ext);
+        if (!key) throw new Error('Error al subir la foto');
+
+        // Best-effort thumbnail (never blocks the main upload on failure).
+        let thumbKey: string | null = null;
+        try {
+            const thumb = await makeThumbnail(file);
+            if (thumb) thumbKey = await uploadBlob(thumb, 'image/jpeg', 'jpg', 'thumb');
+        } catch {
+            /* ignore thumbnail errors */
+        }
+
         await fetch('/api/photos', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 key,
+                thumbKey,
                 uploader: name.trim() || null,
                 contentType: file.type,
                 size: file.size,
@@ -482,7 +534,7 @@ export default function UploadPage() {
                                     }`}
                             >
                                 <img
-                                    src={p.url as string}
+                                    src={(p.thumbUrl || p.url) as string}
                                     alt={p.uploader || 'Foto'}
                                     loading="lazy"
                                     decoding="async"

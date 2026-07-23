@@ -32,12 +32,13 @@ async function handleUpload(req: VercelRequest, res: VercelResponse) {
       error: `Almacenamiento de fotos no configurado (faltan variables: ${missingR2Vars().join(', ')})`,
     });
   }
-  const { contentType, ext } = req.body || {};
+  const { contentType, ext, kind } = req.body || {};
   if (!contentType || !ALLOWED_UPLOAD.includes(contentType)) {
     return res.status(400).json({ error: 'Solo se permiten fotos (jpg, png, webp, heic, gif)' });
   }
   const safeExt = typeof ext === 'string' ? ext.replace(/[^a-z0-9]/gi, '').slice(0, 5) : '';
-  const key = `fotos/${Date.now()}-${Math.random().toString(36).slice(2, 10)}${safeExt ? `.${safeExt}` : ''}`;
+  const folder = kind === 'thumb' ? 'fotos/thumbs' : 'fotos';
+  const key = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}${safeExt ? `.${safeExt}` : ''}`;
   try {
     const url = await getSignedUrl(
       r2Client(),
@@ -120,7 +121,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Public: list photos (newest first) with a viewable URL.
       const result = await sql`
-        SELECT id, r2_key, uploader, content_type, created_at
+        SELECT id, r2_key, thumb_key, uploader, content_type, created_at
         FROM photos
         ORDER BY created_at DESC
         LIMIT 1000
@@ -136,11 +137,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               { expiresIn: 3600 },
             );
           }
+          // Small preview for the grid. Falls back to the full image for
+          // photos uploaded before thumbnails existed.
+          let thumbUrl = url;
+          if (row.thumb_key) {
+            let t = publicUrl(row.thumb_key);
+            if (!t && client) {
+              t = await getSignedUrl(
+                client,
+                new GetObjectCommand({ Bucket: R2_BUCKET, Key: row.thumb_key }),
+                { expiresIn: 3600 },
+              );
+            }
+            if (t) thumbUrl = t;
+          }
           return {
             id: row.id,
             uploader: row.uploader,
             created_at: row.created_at,
             url,
+            thumbUrl,
           };
         }),
       );
@@ -157,7 +173,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!r2Configured()) {
           return res.status(503).json({ error: 'Almacenamiento no configurado' });
         }
-        const rows = await sql`SELECT id, r2_key FROM photos`;
+        const rows = await sql`SELECT id, r2_key, thumb_key FROM photos`;
         const client = r2Client();
         let removed = 0;
         await Promise.all(
@@ -168,6 +184,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               );
             } catch {
               await sql`DELETE FROM photos WHERE id = ${row.id}`;
+              if (row.thumb_key) {
+                await client
+                  .send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: row.thumb_key }))
+                  .catch(() => {});
+              }
               removed++;
             }
           }),
@@ -198,11 +219,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Public: record a photo's metadata after a successful upload.
-      const { key, uploader, contentType, size } = req.body || {};
+      const { key, thumbKey, uploader, contentType, size } = req.body || {};
       if (!key) return res.status(400).json({ error: 'Falta la referencia del archivo' });
       await sql`
-        INSERT INTO photos (r2_key, uploader, content_type, size)
-        VALUES (${key}, ${uploader || null}, ${contentType || null}, ${size || null})
+        INSERT INTO photos (r2_key, thumb_key, uploader, content_type, size)
+        VALUES (${key}, ${thumbKey || null}, ${uploader || null}, ${contentType || null}, ${size || null})
       `;
       return res.status(200).json({ success: true });
     }
@@ -212,12 +233,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!isAdmin(req)) return res.status(401).json({ error: 'Unauthorized' });
       const id = Number(req.query.id);
       if (!id) return res.status(400).json({ error: 'Falta el id' });
-      const row = await sql`SELECT r2_key FROM photos WHERE id = ${id}`;
+      const row = await sql`SELECT r2_key, thumb_key FROM photos WHERE id = ${id}`;
       const key = row.rows[0]?.r2_key;
-      if (key && r2Configured()) {
-        await r2Client().send(
-          new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key }),
-        );
+      const thumbKey = row.rows[0]?.thumb_key;
+      if (r2Configured()) {
+        const client = r2Client();
+        if (key) {
+          await client.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+        }
+        if (thumbKey) {
+          await client
+            .send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: thumbKey }))
+            .catch(() => {});
+        }
       }
       await sql`DELETE FROM photos WHERE id = ${id}`;
       return res.status(200).json({ success: true });

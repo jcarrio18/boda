@@ -4,11 +4,12 @@
 @theme {
   --font-serif: "Cormorant Garamond", serif;
   --font-sans: "Inter", sans-serif;
-  
+
   --color-med-cream: #FDFBF7;
   --color-med-terracotta: #C05A3E;
   --color-med-olive: #5A5A40;
   --color-med-azure: #7BA4B1;
+  --color-med-gold: #B08D57;
   --color-med-ink: #1A1A1A;
 }
 
@@ -16,18 +17,30 @@
   body {
     @apply bg-med-cream text-med-ink font-sans antialiased;
   }
-  
-  h1, h2, h3, h4, h5, h6 {
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply font-serif;
   }
 }
 
 .roadmap-line {
-  background: repeating-linear-gradient(
-    to bottom,
-    var(--color-med-olive) 0,
-    var(--color-med-olive) 10px,
-    transparent 10px,
-    transparent 20px
-  );
+  background: repeating-linear-gradient(to bottom,
+      var(--color-med-olive) 0,
+      var(--color-med-olive) 10px,
+      transparent 10px,
+      transparent 20px);
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }

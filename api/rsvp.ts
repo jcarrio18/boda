@@ -1,6 +1,6 @@
 import { sql } from '@vercel/postgres';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { sendTelegram } from '../lib/telegram';
+import { sendTelegram } from '../lib/telegram.js';
 
 function esc(s: unknown): string {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

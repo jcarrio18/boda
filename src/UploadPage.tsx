@@ -314,7 +314,7 @@ export default function UploadPage() {
                     >
                         {displayed.map((p, i) => {
                             const d = i - heroIdx;
-                            if (Math.abs(d) > 3) return null;
+                            if (Math.abs(d) > 2) return null;
                             const ad = Math.abs(d);
                             const scale = Math.max(1 - ad * 0.13, 0.5);
                             const opacity = ad >= 3 ? 0 : Math.max(1 - ad * 0.12, 0);
@@ -338,6 +338,7 @@ export default function UploadPage() {
                                             src={p.url as string}
                                             alt={p.uploader || 'Foto'}
                                             draggable={false}
+                                            decoding="async"
                                             onError={() => handleBrokenImg(p.id)}
                                             className={`max-h-full max-w-full object-contain rounded-2xl ${d === 0 ? 'shadow-2xl' : 'shadow-lg'
                                                 }`}
@@ -472,6 +473,7 @@ export default function UploadPage() {
                                         ? toggleSelect(p.id)
                                         : (goHero(i), window.scrollTo({ top: 0, behavior: 'smooth' }))
                                 }
+                                style={{ contentVisibility: 'auto', containIntrinsicSize: '150px 150px' }}
                                 className={`relative block aspect-square rounded-lg overflow-hidden bg-med-olive/5 ${selectMode && selected.has(p.id)
                                     ? 'ring-2 ring-med-olive'
                                     : i === heroIdx
@@ -483,6 +485,7 @@ export default function UploadPage() {
                                     src={p.url as string}
                                     alt={p.uploader || 'Foto'}
                                     loading="lazy"
+                                    decoding="async"
                                     onError={() => handleBrokenImg(p.id)}
                                     className="w-full h-full object-cover hover:scale-105 transition"
                                 />

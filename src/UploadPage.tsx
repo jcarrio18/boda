@@ -104,7 +104,7 @@ export default function UploadPage() {
     const uploadOne = async (file: File): Promise<boolean> => {
         if (file.size > 20 * 1024 * 1024) throw new Error('La foto supera los 20 MB');
         const ext = file.name.includes('.') ? file.name.split('.').pop() : '';
-        const presignRes = await fetch('/api/photos-upload', {
+        const presignRes = await fetch('/api/photos?action=upload', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contentType: file.type, ext }),
@@ -179,7 +179,7 @@ export default function UploadPage() {
 
     const downloadPhoto = (p: Photo) => {
         const a = document.createElement('a');
-        a.href = `/api/photos-download?id=${p.id}`;
+        a.href = `/api/photos?action=download&id=${p.id}`;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -207,7 +207,7 @@ export default function UploadPage() {
             const zip = new JSZip();
             for (const p of chosen) {
                 try {
-                    const r = await fetch(`/api/photos-file?id=${p.id}`);
+                    const r = await fetch(`/api/photos?action=file&id=${p.id}`);
                     if (!r.ok) continue;
                     const blob = await r.blob();
                     const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');

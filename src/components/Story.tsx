@@ -42,7 +42,7 @@ export default function Story() {
                 Todo empezó en una pequeña cabaña en medio de la nada de Noruega, donde en un cumpleaños de nuestro amigo en común, nos tiramos hablando casi toda la tarde. Decidimos retomar la conversación en un Burger King al dia siguiente y, lo que se suponía que iba a ser una cena rápida se convirtió en un paseo al día siguiente y horas de conversación sobre nuestras vidas.
               </p>
               <p>
-                Desde ahí y durante los últimos casi 4 años; hemos explorado países, comidas, compartido momentos en familia y construido un hogar juntos. Fue al volver donde todo empezó, donde decidimos de nuevo, comenzar otra historia de amor.
+                Desde ahí y durante los últimos 4 años; hemos explorado países, comidas, compartido momentos en familia y construido un hogar juntos. Fue al volver donde todo empezó, donde decidimos de nuevo, comenzar otra historia de amor.
               </p>
               <p className="font-serif italic text-med-olive text-xl pt-4">
                 "Para sacar el máximo rendimiento de la alegría hay que tener con quién compartirla."

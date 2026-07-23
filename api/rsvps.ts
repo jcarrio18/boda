@@ -10,11 +10,12 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Optional: Add basic auth protection
-  const authHeader = req.headers.authorization;
-  const expectedAuth = process.env.ADMIN_TOKEN ? `Bearer ${process.env.ADMIN_TOKEN}` : null;
-  
-  if (expectedAuth && authHeader !== expectedAuth) {
+  // Auth: ADMIN_TOKEN is required for this admin-only endpoint.
+  const token = process.env.ADMIN_TOKEN;
+  if (!token) {
+    return res.status(503).json({ error: 'Admin no configurado (falta ADMIN_TOKEN)' });
+  }
+  if (req.headers.authorization !== `Bearer ${token}`) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 

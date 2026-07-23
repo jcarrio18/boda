@@ -21,7 +21,7 @@ const rsvpSchema = z.object({
     message: "Por favor, dinos si podrás venir"
   }),
   additional_guests: z.array(guestSchema).optional(),
-  bus_trip: z.enum(["one_way", "round_trip_1", "round_trip_2", "none"]).optional(),
+  bus_trip: z.enum(["one_way", "round_trip_1", "round_trip_2", "return_1", "return_2", "none"]).optional(),
   songs: z.string().optional(),
   message: z.string().optional(),
 });
@@ -240,6 +240,8 @@ export default function RSVPForm() {
                   { value: "one_way", label: "Solo ida" },
                   { value: "round_trip_1", label: "Ida y vuelta (primer turno - 01:00h)" },
                   { value: "round_trip_2", label: "Ida y vuelta (segundo turno - 04:00h)" },
+                  { value: "return_1", label: "Solo vuelta (primer turno - 01:00h)" },
+                  { value: "return_2", label: "Solo vuelta (segundo turno - 04:00h)" },
                   { value: "none", label: "No haré uso del autobús" },
                 ].map((option) => (
                   <label key={option.value} className="flex items-center gap-3 cursor-pointer group">

@@ -54,27 +54,19 @@ export default async function handler(
         FROM rsvps
       `;
 
-      let synced = 0;
+      // Build all rows (mains + extras) first, then do a single bulk INSERT so
+      // we don't fire ~100 sequential round-trips (which timed out the function).
+      const cols = [
+        'rsvp_id', 'source_key', 'name', 'email', 'is_extra', 'guest_type',
+        'dietary', 'rsvp_status', 'bus_trip', 'source',
+      ];
+      const rows: unknown[][] = [];
+
       for (const row of rsvps.rows) {
-        await sql`
-          INSERT INTO guests (
-            rsvp_id, source_key, name, email, is_extra, guest_type,
-            dietary, rsvp_status, bus_trip, source
-          )
-          VALUES (
-            ${row.id}, ${`rsvp:${row.id}:main`}, ${row.name}, ${row.email}, FALSE, 'adult',
-            ${row.dietary || null}, ${row.attending}, ${row.bus_trip || null}, 'rsvp'
-          )
-          ON CONFLICT (source_key) DO UPDATE SET
-            name = EXCLUDED.name,
-            email = EXCLUDED.email,
-            dietary = EXCLUDED.dietary,
-            rsvp_status = EXCLUDED.rsvp_status,
-            bus_trip = EXCLUDED.bus_trip,
-            rsvp_id = EXCLUDED.rsvp_id,
-            updated_at = NOW()
-        `;
-        synced++;
+        rows.push([
+          row.id, `rsvp:${row.id}:main`, row.name, row.email, false, 'adult',
+          row.dietary || null, row.attending, row.bus_trip || null, 'rsvp',
+        ]);
 
         let extras: Array<{ name?: string; dietary?: string; type?: string }> = [];
         if (row.additional_guests_json) {
@@ -89,26 +81,34 @@ export default async function handler(
         for (let i = 0; i < extras.length; i++) {
           const extra = extras[i] || {};
           const guestType = extra.type === 'child' ? 'child' : 'adult';
-          await sql`
-            INSERT INTO guests (
-              rsvp_id, source_key, name, email, is_extra, guest_type,
-              dietary, rsvp_status, bus_trip, source
-            )
-            VALUES (
-              ${row.id}, ${`rsvp:${row.id}:extra:${i}`}, ${extra.name || `Acompañante ${i + 1}`}, NULL, TRUE, ${guestType},
-              ${extra.dietary || null}, ${row.attending}, ${row.bus_trip || null}, 'rsvp'
-            )
-            ON CONFLICT (source_key) DO UPDATE SET
-              name = EXCLUDED.name,
-              guest_type = EXCLUDED.guest_type,
-              dietary = EXCLUDED.dietary,
-              rsvp_status = EXCLUDED.rsvp_status,
-              bus_trip = EXCLUDED.bus_trip,
-              rsvp_id = EXCLUDED.rsvp_id,
-              updated_at = NOW()
-          `;
-          synced++;
+          rows.push([
+            row.id, `rsvp:${row.id}:extra:${i}`, extra.name || `Acompañante ${i + 1}`, null, true, guestType,
+            extra.dietary || null, row.attending, row.bus_trip || null, 'rsvp',
+          ]);
         }
+      }
+
+      let synced = 0;
+      if (rows.length > 0) {
+        const valuesSql = rows
+          .map((_, ri) => `(${cols.map((__, ci) => `$${ri * cols.length + ci + 1}`).join(', ')})`)
+          .join(', ');
+        const params = rows.flat();
+        const text = `
+          INSERT INTO guests (${cols.join(', ')})
+          VALUES ${valuesSql}
+          ON CONFLICT (source_key) DO UPDATE SET
+            name = EXCLUDED.name,
+            email = EXCLUDED.email,
+            guest_type = EXCLUDED.guest_type,
+            dietary = EXCLUDED.dietary,
+            rsvp_status = EXCLUDED.rsvp_status,
+            bus_trip = EXCLUDED.bus_trip,
+            rsvp_id = EXCLUDED.rsvp_id,
+            updated_at = NOW()
+        `;
+        await sql.query(text, params as any[]);
+        synced = rows.length;
       }
 
       return res.status(200).json({ success: true, synced });

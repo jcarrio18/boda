@@ -45,21 +45,97 @@ export default function UploadPage() {
     const [selected, setSelected] = useState<Set<number>>(new Set());
     const [zipping, setZipping] = useState(false);
 
+    // Pagination / infinite scroll state.
+    const [uploaders, setUploaders] = useState<string[]>([]);
+    const [total, setTotal] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const offsetRef = useRef(0);
+    const loadingRef = useRef(false);
+    const sentinelRef = useRef<HTMLDivElement | null>(null);
+    const PAGE = 48;
+
     const inputRef = useRef<HTMLInputElement | null>(null);
     const heroTouch = useRef<number | null>(null);
     const wheelLock = useRef(false);
     const touchX = useRef<number | null>(null);
 
-    const loadPhotos = useCallback(() => {
-        fetch('/api/photos')
+    // Total count + list of uploaders (for the filter), independent of paging.
+    const loadFacets = useCallback(() => {
+        fetch('/api/photos?action=facets')
             .then((r) => r.json())
-            .then((data) => Array.isArray(data) && setPhotos(data))
+            .then((d) => {
+                if (d && Array.isArray(d.uploaders)) setUploaders(d.uploaders);
+                if (d && typeof d.total === 'number') setTotal(d.total);
+            })
             .catch(() => { });
     }, []);
 
+    // Load one page. `reset` starts over from the top (e.g. sort/filter change).
+    const loadPage = useCallback(
+        async (reset: boolean) => {
+            if (loadingRef.current) return;
+            loadingRef.current = true;
+            setLoadingMore(true);
+            const off = reset ? 0 : offsetRef.current;
+            const params = new URLSearchParams({
+                limit: String(PAGE),
+                offset: String(off),
+                sort,
+            });
+            if (filterUser !== 'all') params.set('uploader', filterUser);
+            try {
+                const r = await fetch(`/api/photos?${params.toString()}`);
+                const data = await r.json();
+                if (Array.isArray(data)) {
+                    offsetRef.current = off + data.length;
+                    setPhotos((prev) => (reset ? data : [...prev, ...data]));
+                    setHasMore(data.length === PAGE);
+                }
+            } catch {
+                /* ignore */
+            } finally {
+                setLoadingMore(false);
+                loadingRef.current = false;
+            }
+        },
+        [sort, filterUser],
+    );
+
+    // (Re)load the first page on mount and whenever sort/filter changes.
     useEffect(() => {
-        loadPhotos();
-    }, [loadPhotos]);
+        offsetRef.current = 0;
+        setHasMore(true);
+        loadPage(true);
+    }, [loadPage]);
+
+    useEffect(() => {
+        loadFacets();
+    }, [loadFacets]);
+
+    // Infinite scroll: load the next page when the sentinel scrolls into view.
+    useEffect(() => {
+        const el = sentinelRef.current;
+        if (!el) return;
+        const io = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting && hasMore && !loadingRef.current) {
+                    loadPage(false);
+                }
+            },
+            { rootMargin: '600px' },
+        );
+        io.observe(el);
+        return () => io.disconnect();
+    }, [hasMore, loadPage]);
+
+    // Reload from the top after uploads / deletions.
+    const reload = useCallback(() => {
+        offsetRef.current = 0;
+        setHasMore(true);
+        loadPage(true);
+        loadFacets();
+    }, [loadPage, loadFacets]);
 
     // If a photo's file no longer exists in R2 (deleted), hide it from the album
     // and ask the server to prune the orphan DB row (only if truly missing).
@@ -72,25 +148,10 @@ export default function UploadPage() {
         }).catch(() => { });
     };
 
-    const uploaders = useMemo(() => {
-        const set = new Set<string>();
-        for (const p of photos) if (p.uploader?.trim()) set.add(p.uploader.trim());
-        return [...set].sort((a, b) => a.localeCompare(b, 'es'));
-    }, [photos]);
+    // Server already sorts/filters; we just drop any rows without a URL.
+    const displayed = useMemo(() => photos.filter((p) => p.url), [photos]);
 
-    const displayed = useMemo(() => {
-        let list = photos.filter((p) => p.url);
-        if (filterUser !== 'all') {
-            list = list.filter((p) => (p.uploader?.trim() || '') === filterUser);
-        }
-        list = [...list].sort((a, b) => {
-            const d = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-            return sort === 'newest' ? d : -d;
-        });
-        return list;
-    }, [photos, filterUser, sort]);
-
-    // Keep hero index valid when the filtered list changes.
+    // Keep hero index valid when the list changes.
     useEffect(() => {
         setHeroIdx((i) => (i > displayed.length - 1 ? 0 : i));
     }, [displayed.length]);
@@ -204,7 +265,7 @@ export default function UploadPage() {
                 );
             }
         }
-        loadPhotos();
+        reload();
         if (inputRef.current) inputRef.current.value = '';
         setTimeout(() => setUploads([]), 2500);
     };
@@ -460,7 +521,9 @@ export default function UploadPage() {
             {/* GRID + controls */}
             <section className="max-w-6xl mx-auto px-4 py-6">
                 <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-                    <h2 className="font-serif text-lg">Todas las fotos ({displayed.length})</h2>
+                    <h2 className="font-serif text-lg">
+                        Todas las fotos ({filterUser === 'all' ? total : displayed.length})
+                    </h2>
                     <div className="flex items-center gap-2 flex-wrap">
                         <select
                             value={sort}
@@ -553,6 +616,14 @@ export default function UploadPage() {
                                 )}
                             </button>
                         ))}
+                    </div>
+                )}
+
+                {/* Infinite-scroll sentinel + loader */}
+                <div ref={sentinelRef} className="h-8" />
+                {loadingMore && (
+                    <div className="flex justify-center py-4 text-med-ink/40">
+                        <Loader2 className="w-5 h-5 animate-spin" />
                     </div>
                 )}
 

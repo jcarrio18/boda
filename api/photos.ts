@@ -119,13 +119,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Public: stream a photo's bytes same-origin.
       if (req.query.action === 'file') return handleFile(req, res);
 
-      // Public: list photos (newest first) with a viewable URL.
-      const result = await sql`
+      // Public: facets for the album UI (total count + list of uploaders).
+      if (req.query.action === 'facets') {
+        const totalR = await sql`SELECT COUNT(*)::int AS c FROM photos`;
+        const upR = await sql`
+          SELECT DISTINCT uploader FROM photos
+          WHERE uploader IS NOT NULL AND uploader <> ''
+          ORDER BY uploader
+        `;
+        return res.status(200).json({
+          total: totalR.rows[0].c,
+          uploaders: upR.rows.map((r) => r.uploader),
+        });
+      }
+
+      // Public: list photos (paginated) with a viewable URL.
+      // Backwards compatible: with no `limit` param it returns up to 1000
+      // (used by the admin gallery). The public album passes limit/offset/sort.
+      const hasLimit = req.query.limit !== undefined;
+      const limit = hasLimit
+        ? Math.min(Math.max(Number(req.query.limit) || 48, 1), 200)
+        : 1000;
+      const offset = Math.max(Number(req.query.offset) || 0, 0);
+      const order = req.query.sort === 'oldest' ? 'ASC' : 'DESC';
+      const uploader =
+        typeof req.query.uploader === 'string' && req.query.uploader
+          ? req.query.uploader
+          : null;
+
+      const where = uploader ? 'WHERE uploader = $3' : '';
+      const text = `
         SELECT id, r2_key, thumb_key, uploader, content_type, created_at
         FROM photos
-        ORDER BY created_at DESC
-        LIMIT 1000
+        ${where}
+        ORDER BY created_at ${order}
+        LIMIT $1 OFFSET $2
       `;
+      const params = uploader ? [limit, offset, uploader] : [limit, offset];
+      const result = await sql.query(text, params as any[]);
+
       const client = r2Configured() ? r2Client() : null;
       const items = await Promise.all(
         result.rows.map(async (row) => {
